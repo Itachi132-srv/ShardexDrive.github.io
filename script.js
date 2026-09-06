@@ -11,12 +11,15 @@ init();
 animate();
 
 function init() {
+    // Scene & Cinematic Sunset Desert Fog
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xff9944);
     scene.fog = new THREE.FogExp2(0xff9944, 0.012);
 
+    // Camera
     camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
 
+    // Renderer setup with high performance & shadows
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -26,10 +29,11 @@ function init() {
     renderer.toneMappingExposure = 1.3;
     document.body.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffeedd, 0.9);
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffeedd, 0.7);
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfffaee, 1.6);
+    const sunLight = new THREE.DirectionalLight(0xfffaee, 1.2);
     sunLight.position.set(60, 120, 40);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
@@ -43,6 +47,7 @@ function init() {
     sunLight.shadow.camera.bottom = -d;
     scene.add(sunLight);
 
+    // Desert Ground Environment
     const groundGeo = new THREE.PlaneGeometry(3000, 3000);
     const groundMat = new THREE.MeshStandardMaterial({ color: 0xc28d51, roughness: 0.95 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -50,15 +55,20 @@ function init() {
     ground.position.y = -0.1;
     scene.add(ground);
 
+    // Build Initial Road Segments
     for (let i = 0; i < 18; i++) {
         createRoadSegment(-i * 40);
     }
 
+    // Load Car using LowPolyPickup.mtl and LowPolyPickup.obj
     createCar();
+
+    // Controls Setup
     setupControls();
     window.addEventListener('resize', onWindowResize);
 }
 
+// Realistic procedural asphalt texture
 function createAsphaltTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -97,6 +107,7 @@ function createRoadSegment(zPos) {
     road.receiveShadow = true;
     roadGroup.add(road);
 
+    // Center Dashed Lines
     for (let j = -18; j < 20; j += 6) {
         const lineGeo = new THREE.PlaneGeometry(0.3, 3);
         const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -106,6 +117,7 @@ function createRoadSegment(zPos) {
         roadGroup.add(line);
     }
 
+    // Side Railings
     const railGeo = new THREE.BoxGeometry(0.4, 0.8, 40);
     const railMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.3 });
     
@@ -127,40 +139,30 @@ function createRoadSegment(zPos) {
 function createCar() {
     car = new THREE.Group();
     
-    // Shiny Metallic Red Material for the PickUp Model
-    const shinyRedMat = new THREE.MeshStandardMaterial({
-        color: 0xee1122,
-        metalness: 0.85,
-        roughness: 0.2
-    });
-
-    const objLoader = new THREE.OBJLoader();
-    // Path updated to your exact folder structure: LowPolyPickup_Model/LowPolyPickup.obj
-    objLoader.load('LowPolyPickup_Model/LowPolyPickup.obj', function (object) {
-        object.traverse((child) => {
-            if (child.isMesh) {
-                if (child.name.toLowerCase().includes('plane') || child.geometry.boundingSphere?.radius > 15) {
-                    child.visible = false;
-                    return;
+    const mtlLoader = new THREE.MTLLoader();
+    mtlLoader.load('LowPolyPickup.mtl', function (materials) {
+        materials.preload();
+        
+        const objLoader = new THREE.OBJLoader();
+        objLoader.setMaterials(materials);
+        objLoader.load('LowPolyPickup.obj', function (object) {
+            object.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
                 }
-                child.material = shinyRedMat;
-                child.castShadow = true;
-                child.receiveShadow = true;
-            }
+            });
+
+            object.scale.set(1.2, 1.2, 1.2);
+            // Rotate 180 degrees (Math.PI) to make sure the car faces forward correctly and isn't backward
+            object.rotation.y = Math.PI; 
+            object.position.set(0, 0, 0);
+            car.add(object);
+        }, undefined, function (error) {
+            console.error('Error loading LowPolyPickup.obj:', error);
         });
-
-        object.scale.set(0.75, 0.75, 0.75);
-
-        const box = new THREE.Box3().setFromObject(object);
-        const center = box.getCenter(new THREE.Vector3());
-        object.position.sub(center);
-        object.position.y += (box.max.y - box.min.y) / 2;
-
-        object.rotation.y = Math.PI;
-
-        car.add(object);
     }, undefined, function (error) {
-        console.error('Error loading LowPolyPickup.obj:', error);
+        console.error('Error loading LowPolyPickup.mtl:', error);
     });
 
     car.position.set(0, 0, 0);
@@ -207,6 +209,7 @@ function animate() {
 
     requestAnimationFrame(animate);
 
+    // Acceleration physics
     if (keys.up) {
         speed = Math.min(speed + acceleration, maxSpeed);
     } else if (keys.down) {
@@ -215,6 +218,7 @@ function animate() {
         speed = Math.max(speed - deceleration, 0);
     }
 
+    // Steering & smooth banking tilt physics
     if (keys.left && car.position.x > -7) {
         car.position.x -= 0.18;
         targetCarRotationZ = 0.1;
@@ -227,6 +231,7 @@ function animate() {
 
     car.rotation.z = THREE.MathUtils.lerp(car.rotation.z, targetCarRotationZ, 0.15);
 
+    // Infinite road movement and recycling
     if (speed > 0) {
         distance += Math.round(speed * 12);
         roadSegments.forEach(segment => {
@@ -241,15 +246,18 @@ function animate() {
         });
     }
 
+    // Dynamic FOV speed sensation effect
     const targetFov = 65 + (speed * 8);
     camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.1);
     camera.updateProjectionMatrix();
 
+    // Smooth camera follow
     camera.position.x = car.position.x * 0.4;
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, car.position.y + 2.2, 0.1);
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, car.position.z + 4.2, 0.1);
-    camera.lookAt(car.position.x, car.position.y + 0.5, car.position.z - 2.0);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, car.position.y + 3.2, 0.1);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, car.position.z + 6.5, 0.1);
+    camera.lookAt(car.position.x, car.position.y + 0.8, car.position.z - 2.5);
 
+    // HUD Update
     const speedEl = document.getElementById('speed-val');
     const distEl = document.getElementById('dist-val');
     if (speedEl) speedEl.innerText = Math.round(speed * 140);
